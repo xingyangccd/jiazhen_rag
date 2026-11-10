@@ -28,6 +28,20 @@ class DatabaseSettings(EnvSettings):
     name: str = Field(alias="DB_NAME", default="insurance")
     user: str = Field(alias="DB_USER", default="insurance")
     password: str = Field(alias="DB_PASSWORD", default="insurance123")
+    echo: bool = Field(alias="DB_ECHO", default=False)
+    pool_size: int = Field(alias="DB_POOL_SIZE", default=5)
+    max_overflow: int = Field(alias="DB_MAX_OVERFLOW", default=10)
+    pool_recycle: int = Field(alias="DB_POOL_RECYCLE", default=1800)
+
+    def build_url(self, scheme: str) -> str:
+        return PostgresDsn.build(
+            scheme=scheme,
+            host=self.host,
+            port=self.port,
+            username=self.user,
+            password=self.password,
+            path=self.name,
+        ).encoded_string()
 
     @computed_field
     @property
@@ -40,6 +54,16 @@ class DatabaseSettings(EnvSettings):
             username=self.user,
             password=self.password
         ).encoded_string()
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        return self.build_url("postgresql+asyncpg")
+
+    @computed_field
+    @property
+    def checkpoint_url(self) -> str:
+        return self.build_url("postgresql")
 
 class LLMSettings(EnvSettings):
     """模型相关配置"""
