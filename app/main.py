@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from urllib.request import Request
-
+from app.modules.chat.router import router as chat_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -96,7 +96,7 @@ app = FastAPI(
 )
 app.include_router(product_router)
 app.include_router(chat_thread_router)
-
+app.include_router(chat_router)
 
 
 @app.get("/health", summary="健康检测接口")
