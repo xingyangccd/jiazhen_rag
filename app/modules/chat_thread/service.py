@@ -1,16 +1,24 @@
 from uuid import UUID
 
+from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy.ext.asyncio import AsyncSession
+from langgraph.graph.state import CompiledStateGraph
 
 from .exceptions import ChatThreadNotFoundError
 from .repository import ChatThreadRepository
 from .models import ChatThread
+from .schemas import ChatHistoryResponse, ChatMessageResponse
+
 
 class ChatThreadService:
-
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        agent: CompiledStateGraph,
+    ):
         self.session = session
         self.repository = ChatThreadRepository(session)
+        self.agent = agent
 
     async def add(self, user_id: int , title: str):
         # 用上下文管理，开启事务，运行完成，自动commit，出现异常，自动rollback
@@ -57,8 +65,49 @@ async def delete(
     user_id: int,
 ) -> None:
     async with self.session.begin():
+        # 1.校验会话归属
         thread = await self.repository.find_owned(thread_id, user_id)
         if thread is None:
             raise ChatThreadNotFoundError
 
+        # 2.删除Checkpointer中的会话状态
+        await self.agent.checkpointer.adelete_thread(str(thread_id))
+
+        # 3.删除会话元数据
         await self.repository.delete(thread)
+async def get_history(
+    self,
+    thread_id: UUID,
+    user_id: int,
+) -> ChatHistoryResponse:
+    # 1.校验会话归属
+    thread = await self.repository.find_owned(thread_id, user_id)
+    if thread is None:
+        raise ChatThreadNotFoundError
+
+    # 2.读取Agent最新状态
+    config = {"configurable": {"thread_id": str(thread_id)}}
+    snapshot = await self.agent.aget_state(config)
+
+    # 3.只保留用户消息和AI消息
+    messages = []
+    for message in snapshot.values.get("messages", []):
+        if isinstance(message, HumanMessage):
+            role = "user"
+        elif isinstance(message, AIMessage):
+            role = "assistant"
+        else:
+            continue
+
+        if message.text:
+            messages.append(
+                ChatMessageResponse(
+                    role=role,
+                    content=message.text,
+                )
+            )
+
+    return ChatHistoryResponse(
+        thread_id=thread_id,
+        messages=messages,
+    )
