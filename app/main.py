@@ -4,7 +4,7 @@ from urllib.request import Request
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
-
+from app.agents.insurance_advisor import init_insurance_agent
 import app
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
@@ -46,14 +46,21 @@ async def lifespan(app: FastAPI):
     try:
         # 1.检查业务数据库连接
         await check_database()
+
         # 2.初始化Checkpointer
         checkpointer = await init_checkpointer()
+
+        # 3.初始化保险顾问Agent
+        app.state.agent = init_insurance_agent(checkpointer)
+
         yield
     finally:
         logger.info("应用关闭中... ")
-        # 3.关闭Checkpointer连接池
+
+        # 4.关闭Checkpointer连接池
         await close_checkpointer()
-        # 4.关闭SQLAlchemy连接池
+
+        # 5.关闭SQLAlchemy连接池
         await close_database()
 
 
@@ -103,5 +110,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.app.host,
         port=settings.app.port,
-        reload=False
+        reload=False,
+        loop= "asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto",
     )
